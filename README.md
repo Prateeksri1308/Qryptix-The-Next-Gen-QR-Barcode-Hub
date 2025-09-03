@@ -30,9 +30,9 @@
 
 <p align="center">
   <img src="https://dummyimage.com/220x460/111/fff&text=Scanner" alt="Scanner" />
-  <img src="https://dummyimage.com/220x460/222/fff&text=QR+Studio" alt="Studio" />
+  <img src="https://dummyimage.com/220x460/222/fff&text=QR+Studio" alt="QR Studio" />
   <img src="https://dummyimage.com/220x460/333/fff&text=3D+Cube" alt="3D Cube" />
-  <img src="https://dummyimage.com/220x460/444/fff&text=PWA" alt="PWA Install" />
+  <img src="https://dummyimage.com/220x460/444/fff&text=PWA+Install" alt="PWA Install" />
 </p>
 
 ---
@@ -73,6 +73,8 @@ npm run build
 
 ✅ Blazing-fast reloads via Service Worker
 
+--------------
+
 <h2>📦 Android App (TWA)</h2>
 
 🛠 Built using Bubblewrap
@@ -83,6 +85,8 @@ npm run build
 
 🔄 Seamless updates
 
+----------
+
 <h2>🚀 Roadmap</h2>
 
  AI-powered recognition for blurry/low-light scans
@@ -92,6 +96,8 @@ npm run build
  User accounts & sharing features
 
  Monetization via AdMob / Premium unlock
+
+---------
 
 <h2>🤝 Contributing</h2>
 
@@ -105,10 +111,14 @@ Push branch (git push origin feature/awesome-feature)
 
 Open a Pull Request 🚀
 
+-----------
+
 <h2>📝 License</h2>
 
 This project is licensed under the MIT License – see LICENSE
 .
+
+-------
 
 <h2>💡 Acknowledgements</h2>
 
