@@ -134,11 +134,6 @@ Netlify
 
 Bubblewrap
 
-<h2 align="center">⭐ Support Qryptix</h2> <p align="center"> If you love Qryptix, please ⭐ this repo and share it with friends!<br/> Together we’ll redefine QR 🚀 </p> 
-
-
-------------
-
 ### 👤 Author
 
 Built with ❤️ by Prateek Srivastava
@@ -149,3 +144,10 @@ Built with ❤️ by Prateek Srivastava
 💼 LinkedIn: https://www.linkedin.com/in/prateek-srivastava
 
 🐙 GitHub: https://github.com/prateek-srivastava
+
+
+<h2 align="center">⭐ Support Qryptix</h2> <p align="center"> If you love Qryptix, please ⭐ this repo and share it with friends!<br/> Together we’ll redefine QR 🚀 </p> 
+
+
+------------
+
