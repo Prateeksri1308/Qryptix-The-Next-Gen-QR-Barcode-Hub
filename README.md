@@ -50,7 +50,7 @@
 
 <h2>⚙️ Installation</h2>
 
-```bash
+--
 # Clone repo
 git clone https://github.com/yourusername/qryptix.git
 cd qryptix
@@ -63,6 +63,7 @@ npm run dev
 
 # Build for production
 npm run build
+----
 <h2>📲 Progressive Web App (PWA)</h2>
 
 ✅ Installable across devices
