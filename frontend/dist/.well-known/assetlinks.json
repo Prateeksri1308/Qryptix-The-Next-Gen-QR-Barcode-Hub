@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.netlify.qryptix.twa",
+    "sha256_cert_fingerprints": [
+      "7D:7E:60:95:54:92:F3:84:7E:97:94:A9:94:E0:E1:94:FB:CB:D2:6B:BA:E0:7D:B7:DA:4A:2F:05:A0:77:83:2E"
+    ]
+  }
+}]

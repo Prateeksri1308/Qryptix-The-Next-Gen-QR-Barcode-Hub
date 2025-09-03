@@ -1,0 +1,411 @@
+<!--
+  scanner.fixed.html
+  Date: 2025-08-31
+  Main fixes: camera/torch handling, deduplication, BarcodeDetector fallback, performance, accessibility, HiDPI rendering, error handling, history normalization.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Qryptix — Scanner</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="theme.css" />
+  <script type="module" src="theme.js" defer></script>
+  <!-- Fallback lib only used if BarcodeDetector is unavailable -->
+  <meta name="theme-color" content="#000000"/>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" defer></script>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="favicon-32x32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <meta name="theme-color" content="#0D6EFD"/>
+  <style>
+    .cam-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3/4;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #000;
+    }
+    .cam-stage video,
+    .cam-stage canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+    .hud { position:absolute; inset:10px; display:none; align-items:center; justify-content:space-between; pointer-events:none; }
+    body.debug-hud .hud { display:flex; }
+    .chips { display:flex; gap:8px; flex-wrap:wrap }
+    .chip { pointer-events:auto; background: rgba(0,0,0,.45); color:#fff; padding:6px 10px; border-radius:999px; font-size:.8rem; backdrop-filter: blur(6px); border:1px solid rgba(255,255,255,.25); }
+    .chip button { all:unset; cursor:pointer; padding:0 2px; }
+    .tag { position:absolute; left:10px; bottom:10px; background:rgba(0,0,0,.5); color:#fff; padding:4px 8px; border-radius:8px; font-size:.8rem }
+    .bbox { position:absolute; inset:0; pointer-events:none; }
+    .result-item { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--bg); }
+    .result-item time { color: var(--muted); font-size:.8rem; }
+    .result-actions { display:flex; gap:8px; flex-wrap:wrap }
+    .list { display:grid; gap:10px; max-height:520px; overflow:auto }
+    .footer-note { color: var(--muted); font-size:.9rem }
+    @media (max-width: 880px){ .grid-2{grid-template-columns:1fr;} .cam-stage{aspect-ratio:4/5;} .container.section{padding-left:14px;padding-right:14px;} }
+  </style>
+</head>
+<body>
+  <div id="page-loader">
+    <div class="loader-container">
+      <div class="logo-spin"><img src="favicon-32x32.png" alt="Logo" /></div>
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div class="status-text"><span id="loader-text">Loading...</span></div>
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+    </div>
+  </div>
+  <header class="header">
+    <div class="container nav">
+      <div class="brand"><div class="brand-logo"></div><div>Qryptix</div></div>
+      <nav class="nav-links desktop-only">
+        <a data-softnav href="index.html"  class="btn sm">Generator</a>
+        <a data-softnav href="studio.html" class="btn sm">Studio</a>
+        <a data-softnav href="cube.html"   class="btn sm">3D</a>
+        <a data-softnav href="scanner.html" class="btn sm active">Scanner</a>
+        <button class="btn icon" data-theme-toggle title="Toggle theme">🌓</button>
+      </nav>
+      <div class="nav-spacer"></div>
+      <button class="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+    </div>
+  </header>
+
+  <div class="drawer-backdrop"></div>
+  <aside class="mobile-drawer">
+    <div class="drawer-head">
+      <div class="brand"><div class="brand-logo"></div>Qryptix</div>
+      <button class="close-btn">&times;</button>
+    </div>
+    <nav class="nav-links" style="flex-direction:column;gap:12px;flex:1;display:flex;">
+      <div class="drawer-top" style="display:flex;flex-direction:column;gap:12px;">
+        <a data-softnav href="index.html" class="btn sm">Home</a>
+        <a data-softnav href="studio.html" class="btn sm">Studio</a>
+        <a data-softnav href="cube.html" class="btn sm">3D</a>
+    <a id="download-btn" href="app-release-signed.apk" class="btn animated-btn primary-btn" download target="_blank" rel="noopener noreferrer">Download APK ⬇️</a>
+        <button class="btn icon" data-theme-toggle>🌓</button>
+      </div>
+      <div class="drawer-bottom">
+        <a href="https://github.com/Prateeksri1308/" target="_blank" class="btn sm ghost drawer-btn github">GitHub</a>
+        <a href="https://www.linkedin.com/in/prateek-srivastava-backend/" target="_blank" class="btn sm ghost drawer-btn linkedin">LinkedIn</a>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="container section">
+    <div class="card" style="position:relative;overflow:hidden">
+      <span class="badge">Scanner</span>
+      <h1 class="h1">Scan live or decode an image</h1>
+      <p class="p-muted">Multi-QR detection, bounding boxes, torch, history, and smart actions. (HUD hidden for users; press <strong>Shift+D</strong> to toggle.)</p>
+      <div class="glow"></div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:18px">
+      <section class="card">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button id="startCam" class="btn primary" aria-pressed="false">🎥 Start camera</button>
+          <button id="stopCam" class="btn ghost" disabled aria-pressed="false">⏹ Stop</button>
+          <button id="torchBtn" class="btn ghost" disabled aria-pressed="false">🔦 Torch</button>
+          <label class="btn ghost">
+            <input id="file" type="file" accept="image/*" style="display:none">
+            📷 Upload image
+          </label>
+          <select id="cameraSelect" class="input" style="max-width:260px"></select>
+        </div>
+
+        <div class="cam-stage preview" style="margin-top:12px">
+          <video id="video" playsinline muted></video>
+          <canvas id="overlay" class="bbox"></canvas>
+          <div class="hud" aria-hidden="true">
+            <div class="chips">
+              <span class="chip" id="fpsChip">FPS: 0</span>
+              <span class="chip" id="resChip">0×0</span>
+            </div>
+            <div class="chips">
+              <span class="chip">Multi-QR</span>
+              <span class="chip" id="engineChip">Engine: —</span>
+            </div>
+          </div>
+          <div class="tag">Camera</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <label>Live Results</label>
+        <div id="results" class="list" style="margin-top:8px" aria-live="polite"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button id="copyAll" class="btn ghost">📋 Copy all</button>
+          <button id="clearLive" class="btn ghost">🧹 Clear</button>
+        </div>
+
+        <hr style="margin:18px 0; border:none; border-top:1px solid var(--border)">
+
+        <div style="display:flex;align-items:center;gap:10px">
+          <h3 style="margin:0">History</h3>
+          <button id="clearHistory" class="btn sm ghost" title="Clear history">🧽 Clear history</button>
+        </div>
+        <div id="history" class="list" style="margin-top:10px"></div>
+
+        <p class="footer-note" style="margin-top:10px">
+          Tip: We detect multiple codes per frame using the browser’s <code>BarcodeDetector</code> when available, and gracefully fall back to jsQR.
+        </p>
+      </section>
+    </div>
+    <a id="download-btn" href="app-release-signed.apk" class="floating-apk-btn" download target="_blank" rel="noopener noreferrer">
+  📱 Get App
+</a>
+  </main>
+
+  <footer class="footer">Made with ❤️ by <strong>Prateek</strong></footer>
+
+  <script>
+       const floatBtn = document.querySelector(".floating-apk-btn");
+
+window.addEventListener("scroll", () => {
+  if (window.scrollY === 0) {
+    // At top → show button
+    floatBtn.style.opacity = "1";
+    floatBtn.style.pointerEvents = "auto";
+  } else {
+    // Scrolled down → hide button
+    floatBtn.style.opacity = "0";
+    floatBtn.style.pointerEvents = "none";
+  }
+});
+  // ---------- Debug HUD ----------
+  (function initDebugHUD(){
+    const urlDebug = new URLSearchParams(location.search).get('debug') === '1';
+    const saved = localStorage.getItem('QRPRO_debugHUD') === '1';
+    if(urlDebug||saved) document.body.classList.add('debug-hud');
+    window.addEventListener('keydown', e=>{
+      if(e.key.toLowerCase()==='d'&&e.shiftKey){
+        document.body.classList.toggle('debug-hud');
+        localStorage.setItem('QRPRO_debugHUD', document.body.classList.contains('debug-hud')?'1':'0');
+      }
+    });
+  })();
+
+  const $=s=>document.querySelector(s);
+  const resultsEl=$('#results');
+  const historyEl=$('#history');
+  const overlay=$('#overlay');
+  const video=$('#video');
+  const torchBtn=$('#torchBtn');
+  const startBtn=$('#startCam');
+  const stopBtn=$('#stopCam');
+  const camSelect=$('#cameraSelect');
+  const fpsChip=$('#fpsChip');
+  const resChip=$('#resChip');
+  const engineChip=$('#engineChip');
+
+  let stream=null, raf=null, lastFrameTime=performance.now(), torchOn=false, currentTrack=null;
+  let usingBarcodeDetector='BarcodeDetector' in window, barcodeDetector=null;
+
+  // ---------- History ----------
+  const HISTORY_KEY='QRPRO_scan_history_v2';
+  const MAX_HISTORY=20;
+  const saveHistory=items=>localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
+  const loadHistory=()=>{ try{return JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]'); }catch{return [];} };
+  const addToHistory = text => {
+  const items = loadHistory();
+  // Always add scan, even if same as previous
+  items.unshift({ text, time: new Date().toISOString() });
+  saveHistory(items.slice(0,20));
+  renderHistory();
+};
+
+
+  function renderHistory(){
+    const items=loadHistory();
+    historyEl.innerHTML='';
+    if(!items.length){
+      const p=document.createElement('p'); p.className='p-muted'; p.textContent='No history yet. Start scanning!';
+      historyEl.appendChild(p); return;
+    }
+    items.forEach(({text,time})=>{
+      const row=document.createElement('div'); row.className='result-item';
+      const left=document.createElement('div');
+      left.innerHTML=`<div style="word-break:break-word">${escapeHtml(text)}</div><time>${new Date(time).toLocaleString()}</time>`;
+      const right=document.createElement('div'); right.className='result-actions';
+      smartButtons(text).forEach(a=>{
+        if(a.href){
+          const link=document.createElement('a'); link.className='btn sm ghost'; link.textContent=a.label; link.href=a.href; link.target='_blank'; link.rel='noopener';
+          right.appendChild(link);
+        }else{ const btn=document.createElement('button'); btn.className='btn sm ghost'; btn.textContent=a.label; btn.onclick=a.onClick; right.appendChild(btn);}
+      });
+      row.appendChild(left); row.appendChild(right); historyEl.appendChild(row);
+    });
+  }
+
+  function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+  function smartButtons(value){
+    const actions=[]; const val=value.trim();
+    const isURL=/^(https?:\/\/|www\.)/i.test(val);
+    const isMail=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)||val.startsWith('mailto:');
+    const isTel=/^\+?[0-9\s\-()]{6,}$/.test(val)||val.startsWith('tel:');
+    if(isURL) actions.push({label:'Open', href: val.startsWith('http')?val:'https://'+val});
+    if(isMail) actions.push({label:'Email', href: val.startsWith('mailto:')?val:'mailto:'+val});
+    if(isTel) actions.push({label:'Call', href: val.startsWith('tel:')?val:'tel:'+val});
+    actions.push({label:'Copy', onClick: async()=>{ try{ await navigator.clipboard.writeText(val); }catch{} }});
+    return actions;
+  }
+
+  function renderResultItem(text){
+    const wrap=document.createElement('div'); wrap.className='result-item';
+    const left=document.createElement('div'); left.innerHTML=`<div style="word-break:break-word">${escapeHtml(text)}</div><time>${new Date().toLocaleString()}</time>`;
+    const right=document.createElement('div'); right.className='result-actions';
+    smartButtons(text).forEach(a=>{
+      if(a.href){ const link=document.createElement('a'); link.className='btn sm ghost'; link.textContent=a.label; link.href=a.href; link.target='_blank'; link.rel='noopener'; right.appendChild(link); }
+      else{ const btn=document.createElement('button'); btn.className='btn sm ghost'; btn.textContent=a.label; btn.onclick=a.onClick; right.appendChild(btn);}
+    });
+    wrap.appendChild(left); wrap.appendChild(right); resultsEl.prepend(wrap);
+  }
+
+  // ---------- Camera ----------
+  let resizeObserver=null;
+  async function listCameras(){
+    camSelect.innerHTML='';
+    try{
+      const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+      devices.forEach((d,i)=>{ const opt=document.createElement('option'); opt.value=d.deviceId; opt.textContent=d.label||`Camera ${i+1}`; camSelect.appendChild(opt); });
+    }catch(e){ console.warn('Camera enumeration failed',e); }
+  }
+
+  async function startCamera(preferredConstraints={}){
+    stopCamera();
+    await listCameras();
+    const constraints={video:{width:{ideal:1280}, height:{ideal:720}, ...preferredConstraints}, audio:false};
+    try{ stream=await navigator.mediaDevices.getUserMedia(constraints); video.srcObject=stream; await video.play(); currentTrack=stream.getVideoTracks()[0]; }catch(e){ alert('Camera access denied or unavailable'); return; }
+
+    const caps=currentTrack.getCapabilities?.()||{};
+    torchBtn.disabled=!caps.torch; torchOn=false;
+
+    // HiDPI overlay
+    const ctx=overlay.getContext('2d');
+    const dpr=window.devicePixelRatio||1;
+    overlay.width=overlay.clientWidth*dpr; overlay.height=overlay.clientHeight*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.font='12px sans-serif'; ctx.textBaseline='top';
+
+    if(resizeObserver) resizeObserver.disconnect();
+    resizeObserver=new ResizeObserver(()=>{ overlay.width=overlay.clientWidth*dpr; overlay.height=overlay.clientHeight*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); });
+    resizeObserver.observe(overlay.parentElement);
+
+    if(usingBarcodeDetector){
+      try{ barcodeDetector=new BarcodeDetector({formats:['aztec','code_128','code_39','code_93','codabar','ean_13','ean_8','itf','pdf417','qr_code','upc_a','upc_e']}); engineChip.textContent='Engine: BarcodeDetector'; }
+      catch(e){ usingBarcodeDetector=false; engineChip.textContent='Engine: jsQR (fallback)'; barcodeDetector=null; }
+    }else engineChip.textContent='Engine: jsQR (fallback)';
+
+    startBtn.disabled=true; stopBtn.disabled=false;
+    tick();
+  }
+
+  function stopCamera(){
+    if(raf) cancelAnimationFrame(raf), raf=null;
+    if(stream) stream.getTracks().forEach(t=>t.stop()), stream=null;
+    startBtn.disabled=false; stopBtn.disabled=true; torchBtn.disabled=true; torchOn=false;
+    overlay.getContext('2d')?.clearRect(0,0,overlay.width,overlay.height);
+    if(resizeObserver) resizeObserver.disconnect(), resizeObserver=null;
+  }
+
+  async function toggleTorch(){
+    if(!currentTrack) return; const caps=currentTrack.getCapabilities?.()||{};
+    if(!caps.torch){ alert('Torch not supported'); return; }
+    torchOn=!torchOn;
+    try{ await currentTrack.applyConstraints({advanced:[{torch:torchOn}]}); torchBtn.textContent=torchOn?'🔦 Torch On':'🔦 Torch'; }catch(e){ torchOn=false; alert('Unable to toggle torch'); }
+  }
+
+  // ---------- Detection ----------
+  const seenSession=new Set(); // dedupe session
+  const MAX_SEEN=1000; let throttleLast=0;
+  const offscreen=document.createElement('canvas'); const offCtx=offscreen.getContext('2d');
+  async function tick(){
+    if(!video.videoWidth||!video.videoHeight){ raf=requestAnimationFrame(tick); return; }
+    const now=performance.now(); const dt=now-lastFrameTime; lastFrameTime=now;
+    fpsChip.textContent='FPS: '+Math.round(1000/Math.max(1,dt)); resChip.textContent=`${video.videoWidth}×${video.videoHeight}`;
+    const boxes=[]; const foundTexts=[];
+
+    if(usingBarcodeDetector && barcodeDetector){
+      try{
+        const barcodes=await barcodeDetector.detect(video);
+        for(const b of barcodes){
+          const raw=b.rawValue?.trim(); if(raw && !seenSession.has(raw)){
+            foundTexts.push({text:raw, format:b.format}); seenSession.add(raw);
+            if(seenSession.size>MAX_SEEN){ const it=seenSession.values(); for(let i=0;i<seenSession.size-MAX_SEEN;i++) seenSession.delete(it.next().value); }
+          }
+          if(b.cornerPoints?.length) boxes.push({corners:b.cornerPoints.map(p=>({x:p.x,y:p.y})), label:b.format});
+          else if(b.boundingBox){ const r=b.boundingBox; boxes.push({corners:[{x:r.x,y:r.y},{x:r.x+r.width,y:r.y},{x:r.x+r.width,y:r.y+r.height},{x:r.x,y:r.y+r.height}], label:b.format}); }
+        }
+      }catch(e){ usingBarcodeDetector=false; engineChip.textContent='Engine: jsQR (fallback)'; barcodeDetector=null; }
+    }else{
+      offscreen.width=video.videoWidth; offscreen.height=video.videoHeight;
+      offCtx.drawImage(video,0,0,offscreen.width,offscreen.height);
+      const code=jsQR(offCtx.getImageData(0,0,offscreen.width,offscreen.height).data,offscreen.width,offscreen.height,{inversionAttempts:'attemptBoth'});
+      if(code?.data?.trim()&&!seenSession.has(code.data.trim())){
+        foundTexts.push({text:code.data.trim(), format:'qr_code'}); seenSession.add(code.data.trim());
+        if(seenSession.size>MAX_SEEN){ const it=seenSession.values(); for(let i=0;i<seenSession.size-MAX_SEEN;i++) seenSession.delete(it.next().value); }
+        const cns=code.location; boxes.push({corners:[{x:cns.topLeftCorner.x,y:cns.topLeftCorner.y},{x:cns.topRightCorner.x,y:cns.topRightCorner.y},{x:cns.bottomRightCorner.x,y:cns.bottomRightCorner.y},{x:cns.bottomLeftCorner.x,y:cns.bottomLeftCorner.y}], label:'qr_code'});
+      }
+    }
+
+    drawBoxes(boxes);
+    if(now-throttleLast>300){ foundTexts.forEach(o=>{ renderResultItem(o.text); addToHistory(o.text); }); throttleLast=now; }
+    raf=requestAnimationFrame(tick);
+  }
+
+  function drawBoxes(boxes){
+    const ctx=overlay.getContext('2d'); const vw=video.videoWidth||1, vh=video.videoHeight||1;
+    const cw=overlay.width||overlay.clientWidth, ch=overlay.height||overlay.clientHeight;
+    ctx.clearRect(0,0,cw,ch); ctx.lineWidth=3; ctx.font='12px sans-serif'; ctx.textBaseline='top';
+    boxes.forEach(b=>{
+      const videoRatio=vw/vh, canvasRatio=cw/ch; let sx=0, sy=0, sw=cw, sh=ch;
+      if(canvasRatio>videoRatio){ sw=sh*videoRatio; sx=(cw-sw)/2; } else{ sh=sw/videoRatio; sy=(ch-sh)/2; }
+      const scaleX=sw/vw, scaleY=sh/vh;
+      const pts=b.corners.map(p=>({x:sx+p.x*scaleX, y:sy+p.y*scaleY}));
+      ctx.strokeStyle='rgba(16,185,129,0.95)'; ctx.fillStyle='rgba(16,185,129,0.12)'; ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x,pts[i].y); ctx.closePath(); ctx.stroke(); ctx.fill();
+      const label=b.label||'CODE'; const minX=Math.min(...pts.map(p=>p.x)), minY=Math.min(...pts.map(p=>p.y)), w=ctx.measureText(label).width+10;
+      const px=Math.min(Math.max(minX,0),cw-w-4), py=Math.min(Math.max(minY-18,0),ch-18);
+      ctx.fillStyle='rgba(0,0,0,.65)'; ctx.fillRect(px,py,w,18); ctx.fillStyle='#fff'; ctx.fillText(label,px+5,py+3);
+    });
+  }
+
+  startBtn.addEventListener('click', ()=>{ startCamera({facingMode:{ideal:'environment'}}); startBtn.setAttribute('aria-pressed','true'); });
+  stopBtn.addEventListener('click', ()=>{ stopCamera(); stopBtn.setAttribute('aria-pressed','false'); });
+  torchBtn.addEventListener('click', ()=>{ toggleTorch(); torchBtn.setAttribute('aria-pressed',torchOn?'true':'false'); });
+  camSelect.addEventListener('change', ()=>startCamera({deviceId:{exact:camSelect.value}}));
+
+  $('#copyAll').addEventListener('click', async()=>{
+    const texts=[...resultsEl.querySelectorAll('.result-item > div:first-child > div:first-child')].map(n=>n.textContent.trim());
+    if(texts.length) try{ await navigator.clipboard.writeText(texts.join('\n')); }catch(e){}
+  });
+
+$('#clearLive').addEventListener('click', ()=>{
+    resultsEl.innerHTML='';
+    overlay.getContext('2d')?.clearRect(0,0,overlay.width,overlay.height);
+    seenSession.clear();       // reset session dedupe
+    throttleLast = 0;          // allow immediate UI updates
+});
+
+$('#clearHistory').addEventListener('click', ()=>{ 
+    // Clear saved history
+    saveHistory([]);
+    renderHistory();
+
+    // Clear live results and overlay
+    resultsEl.innerHTML = '';
+    overlay.getContext('2d')?.clearRect(0,0,overlay.width,overlay.height);
+
+    // Reset session dedupe
+    seenSession.clear();
+    throttleLast = 0; // reset throttling
+});
+
+  (async()=>{ renderHistory(); await listCameras(); try{ await autoStartCamera(); }catch(e){console.warn(e);} })();
+  window.addEventListener('beforeunload', stopCamera);
+
+  async function autoStartCamera(){
+    await listCameras();
+    try{ await startCamera({ facingMode:{ ideal:'environment' } }); return; }catch{}
+    try{ await startCamera({ facingMode:{ ideal:'user' } }); return; }catch{}
+    const firstOpt=camSelect.querySelector('option'); if(firstOpt) await startCamera({ deviceId:{exact:firstOpt.value} });
+  }
+  </script>
+</body>
+</html>

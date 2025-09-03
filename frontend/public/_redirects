@@ -1,0 +1,5 @@
+# explicit mappings for pretty URLs -> html files (MPA)
+# keep this list in sync if you add new pages
+/scanner   /scanner.html   200
+/studio    /studio.html    200
+/cube      /cube.html      200
