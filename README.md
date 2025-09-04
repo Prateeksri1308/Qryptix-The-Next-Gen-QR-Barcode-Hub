@@ -29,10 +29,11 @@
 <h2>🖼 Screenshots</h2>
 
 <p align="center">
-  <img src="https://dummyimage.com/220x460/111/fff&text=Scanner" alt="Scanner" />
-  <img src="https://dummyimage.com/220x460/222/fff&text=QR+Studio" alt="QR Studio" />
-  <img src="https://dummyimage.com/220x460/333/fff&text=3D+Cube" alt="3D Cube" />
-  <img src="https://dummyimage.com/220x460/444/fff&text=PWA+Install" alt="PWA Install" />
+  <img src="home.png" alt="Home OR Genrate" />
+  <img src="scanner.png" alt="Scanner" />
+  <img src="studio.png" alt="QR Studio" />
+  <img src="3D.png" alt="3D Cube" />
+  <img src="app.png" alt="PWA Install" />
 </p>
 
 ---
